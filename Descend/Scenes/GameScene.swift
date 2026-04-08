@@ -80,6 +80,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             let sfx: AudioManager.SFX = type.isRare ? .itemRare : .itemCommon
             AudioManager.shared.playSFX(sfx, on: self)
             self.visualEffects.showItemPickupFlash(at: position, type: type)
+            // Award score for pickup
+            let scoreSource: ScoreSource = type.isRare ? .rareItem : .commonItem
+            self.scoreSystem.addScore(source: scoreSource, hasDoubleScore: self.itemSystem.isActive(.doubleScore))
             if type == .bomb {
                 self.platformSystem.replaceSpecialPlatformsWithNormal()
             }

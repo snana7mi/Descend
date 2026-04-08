@@ -5,15 +5,20 @@ final class InvisibleBehavior: PlatformBehavior {
     private var isRevealed = false
     private weak var playerRef: PlayerNode?
 
+    private var initialized = false
+
     func setPlayer(_ player: PlayerNode) {
         playerRef = player
     }
 
     func update(delta: TimeInterval, platform: PlatformNode) {
-        guard let player = playerRef else {
+        // Start hidden on first frame
+        if !initialized {
+            initialized = true
             platform.alpha = 0.15
-            return
         }
+
+        guard let player = playerRef else { return }
 
         let dx = player.position.x - platform.position.x
         let dy = player.position.y - platform.position.y
@@ -36,6 +41,7 @@ final class InvisibleBehavior: PlatformBehavior {
 
     func onRecycle() {
         isRevealed = false
+        initialized = false
         playerRef = nil
     }
 }

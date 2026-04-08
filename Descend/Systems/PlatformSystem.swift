@@ -27,6 +27,7 @@ final class PlatformSystem {
     private var teleportPending: TeleportBehavior? = nil
     private var teleportCountdown: Int = 0
     private var platformShrinkApplied = false
+    private var preShrinkWidths: [ObjectIdentifier: CGFloat] = [:]
 
     init(scene: SKScene) {
         self.scene = scene
@@ -186,14 +187,26 @@ final class PlatformSystem {
         if eventSystem?.activeEvent == .platformShrink {
             if !platformShrinkApplied {
                 platformShrinkApplied = true
+                preShrinkWidths.removeAll()
                 for platform in activePlatforms {
+                    let id = ObjectIdentifier(platform)
+                    preShrinkWidths[id] = platform.size.width
                     let newWidth = platform.size.width * 0.75
                     platform.run(SKAction.resize(toWidth: newWidth, duration: 0.3))
                     platform.configurePhysics(width: newWidth, height: platformHeight)
                 }
             }
-        } else {
+        } else if platformShrinkApplied {
             platformShrinkApplied = false
+            // Restore original widths
+            for platform in activePlatforms {
+                let id = ObjectIdentifier(platform)
+                if let originalWidth = preShrinkWidths[id] {
+                    platform.run(SKAction.resize(toWidth: originalWidth, duration: 0.3))
+                    platform.configurePhysics(width: originalWidth, height: platformHeight)
+                }
+            }
+            preShrinkWidths.removeAll()
         }
 
         // Spawn new platforms based on timer
@@ -269,9 +282,9 @@ final class PlatformSystem {
             behavior: behavior
         )
 
-        // Link teleport pairs
+        // Link teleport pairs — only link when this is the SECOND pad (not the pending one itself)
         if type == .teleport, let teleportBehavior = behavior as? TeleportBehavior {
-            if let pending = teleportPending {
+            if let pending = teleportPending, pending !== teleportBehavior {
                 pending.pairedPlatform = platform
                 teleportBehavior.pairedPlatform = findPlatformWithBehavior(pending)
                 teleportPending = nil

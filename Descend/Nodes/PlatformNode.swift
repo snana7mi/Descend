@@ -33,6 +33,12 @@ final class PlatformNode: SKSpriteNode {
     func activate(at position: CGPoint, width: CGFloat, height: CGFloat,
                   texture: SKTexture, scheme: PlatformColorScheme,
                   type: PlatformType = .normal, behavior: PlatformBehavior? = nil) {
+        // Reset any stale visual state from previous behaviors
+        self.removeAllActions()
+        self.alpha = 1.0
+        self.xScale = 1.0
+        self.yScale = 1.0
+
         self.position = position
         self.texture = texture
         self.size = CGSize(width: width, height: height)
