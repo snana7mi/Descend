@@ -8,12 +8,12 @@ final class TimeBasedDifficulty {
     private let riseSpeedMin: CGFloat = 180
     private let riseSpeedMax: CGFloat = 500
 
-    // Gravity
-    private let gravityMin: CGFloat = -200
+    // Gravity (starts gentle, ramps up)
+    private let gravityMin: CGFloat = -100
     private let gravityMax: CGFloat = -600
 
-    // Fall speed clamp
-    private let fallSpeedMin: CGFloat = -120
+    // Fall speed clamp (starts slow, ramps up)
+    private let fallSpeedMin: CGFloat = -80
     private let fallSpeedMax: CGFloat = -300
 
     // Platform gap

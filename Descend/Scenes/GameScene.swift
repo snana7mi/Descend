@@ -40,7 +40,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let theme = ThemeManager.shared.currentTheme
 
         // Physics
-        physicsWorld.gravity = CGVector(dx: 0, dy: -200)
+        physicsWorld.gravity = CGVector(dx: 0, dy: -100)
         physicsWorld.contactDelegate = self
 
         // Background
@@ -451,8 +451,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         playerNode.physicsBody?.velocity = .zero
         playerNode.alpha = 1.0
 
-        // Reset gravity
-        physicsWorld.gravity = CGVector(dx: 0, dy: -200)
+        // Reset gravity to initial value
+        physicsWorld.gravity = CGVector(dx: 0, dy: -100)
 
         // Recreate platforms
         platformSystem.createInitialPlatforms(difficulty: difficulty.getDifficulty(platformCount: 0))
