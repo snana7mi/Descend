@@ -10,6 +10,8 @@ final class InputHandler {
     private var pointerVelocity: CGFloat = 0
 
     var isEnabled = true
+    var onIcePlatform = false
+    var magnetTarget: CGFloat? = nil
 
     init(player: PlayerNode, sceneWidth: CGFloat) {
         self.player = player
@@ -33,7 +35,8 @@ final class InputHandler {
         targetX = CGFloat.clamp(targetX, min: 20, max: sceneWidth - 20)
 
         let diff = targetX - player.position.x
-        pointerVelocity = CGFloat.clamp(diff * 15, min: -400, max: 400)
+        let rawVelocity = CGFloat.clamp(diff * 15, min: -400, max: 400)
+        pointerVelocity = onIcePlatform ? rawVelocity * 1.5 : rawVelocity
         player.physicsBody?.velocity.dx = pointerVelocity
     }
 
@@ -48,5 +51,7 @@ final class InputHandler {
         targetX = 0
         lastPointerX = 0
         pointerVelocity = 0
+        onIcePlatform = false
+        magnetTarget = nil
     }
 }

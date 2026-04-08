@@ -3,6 +3,10 @@ import SpriteKit
 final class PlatformNode: SKSpriteNode {
     var colorScheme: PlatformColorScheme
     var isCounted = false
+    var platformType: PlatformType = .normal
+    var behavior: PlatformBehavior?
+
+    var isIcePlatform: Bool { platformType == .ice }
 
     init(texture: SKTexture, colorScheme: PlatformColorScheme) {
         self.colorScheme = colorScheme
@@ -26,17 +30,24 @@ final class PlatformNode: SKSpriteNode {
         physicsBody = body
     }
 
-    func activate(at position: CGPoint, width: CGFloat, height: CGFloat, texture: SKTexture, scheme: PlatformColorScheme) {
+    func activate(at position: CGPoint, width: CGFloat, height: CGFloat,
+                  texture: SKTexture, scheme: PlatformColorScheme,
+                  type: PlatformType = .normal, behavior: PlatformBehavior? = nil) {
         self.position = position
         self.texture = texture
         self.size = CGSize(width: width, height: height)
         self.colorScheme = scheme
         self.isCounted = false
         self.isHidden = false
+        self.platformType = type
+        self.behavior = behavior
         configurePhysics(width: width, height: height)
     }
 
     func deactivate() {
+        behavior?.onRecycle()
+        behavior = nil
+        platformType = .normal
         self.isHidden = true
         self.physicsBody = nil
         self.removeFromParent()
