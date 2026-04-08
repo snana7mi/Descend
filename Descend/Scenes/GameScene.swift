@@ -23,6 +23,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var bottomDangerZone: SKSpriteNode!
     private var bottomDangerLine: SKSpriteNode!
 
+    private var difficulty: TimeBasedDifficulty!
+
     private var themeSubscriptionID: UUID?
     private var lastUpdateTime: TimeInterval = 0
 
@@ -43,9 +45,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         visualEffects = VisualEffects(scene: self)
         visualEffects.createStarField()
 
+        // Difficulty
+        difficulty = TimeBasedDifficulty()
+
         // Platform system
         platformSystem = PlatformSystem(scene: self)
-        platformSystem.createInitialPlatforms()
+        platformSystem.createInitialPlatforms(difficulty: difficulty.getDifficulty(platformCount: 0))
 
         // Player
         playerNode = PlayerNode()
@@ -90,13 +95,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         playerNode.checkAirborne()
 
         // Difficulty
-        let difficulty = DifficultyConfig.getDifficulty(
-            score: score,
-            platformCount: platformSystem.totalPlatformsGenerated
-        )
+        difficulty.update(delta: dt)
+        let currentDifficulty = difficulty.getDifficulty(platformCount: platformSystem.totalPlatformsGenerated)
+
+        // Apply dynamic gravity
+        physicsWorld.gravity = CGVector(dx: 0, dy: currentDifficulty.gravity)
 
         // Platforms
-        platformSystem.update(delta: dt, difficulty: difficulty)
+        platformSystem.update(delta: dt, difficulty: currentDifficulty)
 
         // Player physics
         applyPlayerPhysics(dt: dt)
@@ -117,7 +123,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Visual updates
         visualEffects.createPlayerTrail(player: playerNode)
         visualEffects.updateTrailEffect(delta: dt)
-        visualEffects.updateStars(deltaSeconds: dt, riseSpeed: difficulty.riseSpeed)
+        visualEffects.updateStars(deltaSeconds: dt, riseSpeed: currentDifficulty.riseSpeed)
     }
 
     // MARK: - Player Physics
@@ -145,8 +151,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let body = playerNode.physicsBody else { return }
 
         // Clamp velocity after physics simulation so gravity can't exceed limits
+        let currentDifficulty = difficulty.getDifficulty(platformCount: platformSystem.totalPlatformsGenerated)
         body.velocity.dx = CGFloat.clamp(body.velocity.dx, min: -300, max: 300)
-        body.velocity.dy = CGFloat.clamp(body.velocity.dy, min: -120, max: 200)
+        body.velocity.dy = CGFloat.clamp(body.velocity.dy, min: currentDifficulty.maxFallSpeed, max: 200)
     }
 
     // MARK: - Collision
@@ -242,6 +249,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         inputHandler.reset()
         playerNode.resetFlags()
         visualEffects.resetTrail()
+        difficulty.reset()
 
         // Reset state
         score = 0
@@ -254,7 +262,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         playerNode.physicsBody?.velocity = .zero
 
         // Recreate platforms
-        platformSystem.createInitialPlatforms()
+        platformSystem.createInitialPlatforms(difficulty: difficulty.getDifficulty(platformCount: 0))
 
         // Show start screen
         showStartOverlay()

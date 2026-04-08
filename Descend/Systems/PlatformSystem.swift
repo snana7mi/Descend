@@ -34,7 +34,7 @@ final class PlatformSystem {
         let theme = ThemeManager.shared.currentTheme
         let schemes = theme.colors.platformSchemes
         let isDark = theme.mode == .dark
-        let baseWidth = ceil(DifficultyConfig.basePlatformWidthMax)
+        let baseWidth = ceil(TimeBasedDifficulty.basePlatformWidthMax)
         let h = platformHeight
 
         for scheme in schemes.prefix(5) {
@@ -114,19 +114,19 @@ final class PlatformSystem {
 
     // MARK: - Platform Creation
 
-    func createInitialPlatforms() {
-        let initialDiff = DifficultyConfig.getDifficulty(score: 0)
+    func createInitialPlatforms(difficulty: Difficulty) {
+        let initialDiff = difficulty
         // Player starts at sceneHeight/2 - 100 (SpriteKit coords, slightly below center)
         let playerStartY = gameHeight / 2 - 100
         let startPlatformY = playerStartY - 50
 
         let startWidth = min(
-            DifficultyConfig.platformWidthMin * 1.2,
+            120 * 1.2,
             gameWidth - spawnHorizontalPadding * 2
         )
         createPlatform(x: gameWidth / 2, y: startPlatformY, difficulty: initialDiff, widthOverride: startWidth)
 
-        let gap = DifficultyConfig.platformGapMin
+        let gap: CGFloat = 160
 
         // Below starting platform (decreasing Y in SpriteKit)
         var y = startPlatformY - gap
