@@ -208,7 +208,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Death check
         if playerNode.position.y > size.height - 35 || playerNode.position.y < 50 {
             if itemSystem.isActive(.shield) {
-                itemSystem.activeEffects.removeValue(forKey: .shield)
+                itemSystem.removeEffect(.shield)
                 scoreSystem.shieldUsed()
                 HapticsManager.shared.vibrate(.heavy)
                 if playerNode.position.y > size.height - 35 {

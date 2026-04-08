@@ -36,6 +36,10 @@ final class ItemSystem {
         return activeEffects[type] != nil
     }
 
+    func removeEffect(_ type: ItemType) {
+        activeEffects.removeValue(forKey: type)
+    }
+
     // MARK: - Update
 
     func update(delta: TimeInterval, player: PlayerNode, difficulty: Difficulty) {
