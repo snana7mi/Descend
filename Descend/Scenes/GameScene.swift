@@ -12,6 +12,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var platformSystem: PlatformSystem!
     private var inputHandler: InputHandler!
     private var visualEffects: VisualEffects!
+    private var scoreSystem: ScoreSystem!
 
     private var scoreLabel: SKLabelNode!
     private var startOverlay: StartOverlay?
@@ -61,7 +62,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         inputHandler = InputHandler(player: playerNode, sceneWidth: size.width)
         inputHandler.isEnabled = false
 
-        // Score
+        // Score system
+        scoreSystem = ScoreSystem()
+
+        // Score label
         setupScoreLabel(theme: theme)
 
         // Theme subscription
@@ -114,7 +118,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
 
         // Score
-        score = platformSystem.score
+        scoreSystem.update(delta: dt)
+        score = scoreSystem.score
         if score != lastDisplayedScore {
             scoreLabel.text = "\(score)"
             lastDisplayedScore = score
@@ -173,6 +178,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard !pNode.wasOnPlatform else { return }
 
         pNode.markOnPlatform()
+
+        // Score
+        scoreSystem.registerLanding()
+        scoreSystem.addScore(source: .normalPlatform)
 
         let contactPoint = CGPoint(
             x: pNode.position.x,
@@ -250,6 +259,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         playerNode.resetFlags()
         visualEffects.resetTrail()
         difficulty.reset()
+        scoreSystem.reset()
 
         // Reset state
         score = 0

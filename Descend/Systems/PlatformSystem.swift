@@ -17,8 +17,6 @@ final class PlatformSystem {
 
     private let spawnStrategy: PlatformSpawnStrategy
 
-    var score: Int { passedPlatforms * 10 }
-
     init(scene: SKScene) {
         self.scene = scene
         self.gameWidth = scene.size.width
