@@ -14,6 +14,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var visualEffects: VisualEffects!
     private var scoreSystem: ScoreSystem!
     private var itemSystem: ItemSystem!
+    private var eventSystem: EventSystem!
 
     private var scoreLabel: SKLabelNode!
     private var startOverlay: StartOverlay?
@@ -83,6 +84,15 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             self.platformSystem.spawnSafetyPlatform(at: self.playerNode.position, difficulty: diff)
         }
 
+        // Event system
+        eventSystem = EventSystem()
+        platformSystem.eventSystem = eventSystem
+        eventSystem.onEventEnd = { [weak self] _ in
+            guard let self else { return }
+            self.scoreSystem.addScore(source: .surviveEvent,
+                                      hasDoubleScore: self.itemSystem.isActive(.doubleScore))
+        }
+
         // Score system
         scoreSystem = ScoreSystem()
 
@@ -127,16 +137,38 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         var modifiedRiseSpeed = currentDifficulty.riseSpeed
         if itemSystem.isActive(.freeze) { modifiedRiseSpeed = 0 }
         if itemSystem.isActive(.slowDown) { modifiedRiseSpeed *= 0.6 }
+
+        // Apply event effects
+        var gravityY = currentDifficulty.gravity
+        if let event = eventSystem.activeEvent {
+            switch event {
+            case .gravityReverse:
+                gravityY = -gravityY
+            case .speedStorm:
+                modifiedRiseSpeed *= 1.5
+            case .chaosGravity:
+                let chaosX = CGFloat.random(in: -100...100)
+                physicsWorld.gravity = CGVector(dx: chaosX, dy: gravityY)
+            default:
+                break
+            }
+        }
+
         let effectiveDifficulty = currentDifficulty.withRiseSpeed(modifiedRiseSpeed)
 
-        // Apply dynamic gravity
-        physicsWorld.gravity = CGVector(dx: 0, dy: currentDifficulty.gravity)
+        // Apply dynamic gravity (unless chaosGravity already set it)
+        if eventSystem.activeEvent != .chaosGravity {
+            physicsWorld.gravity = CGVector(dx: 0, dy: gravityY)
+        }
 
         // Platforms
         platformSystem.update(delta: dt, difficulty: effectiveDifficulty)
 
         // Items
         itemSystem.update(delta: dt, player: playerNode, difficulty: currentDifficulty)
+
+        // Events
+        eventSystem.update(delta: dt, difficulty: currentDifficulty)
 
         // Magnet effect
         if itemSystem.isActive(.magnet) {
@@ -331,6 +363,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         difficulty.reset()
         scoreSystem.reset()
         itemSystem.reset()
+        eventSystem.reset()
 
         // Reset state
         score = 0
