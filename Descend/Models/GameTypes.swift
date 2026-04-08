@@ -39,6 +39,28 @@ struct Difficulty {
     let platformWidthMin: CGFloat
     let platformWidthMax: CGFloat
     let isRestPlatform: Bool
+    // New fields
+    let gravity: CGFloat
+    let maxFallSpeed: CGFloat
+    let elapsedTime: TimeInterval
+    let waveFactor: CGFloat
+    let unlockedPlatformTypes: Set<PlatformType>
+    let unlockedItemTypes: Set<ItemType>
+    let eventsEnabled: Bool
+    let specialPlatformChance: CGFloat
+    let isBreathingPhase: Bool
+}
+
+extension Difficulty {
+    func withRiseSpeed(_ speed: CGFloat) -> Difficulty {
+        Difficulty(riseSpeed: speed, spawnInterval: spawnInterval,
+                   platformWidthMin: platformWidthMin, platformWidthMax: platformWidthMax,
+                   isRestPlatform: isRestPlatform, gravity: gravity, maxFallSpeed: maxFallSpeed,
+                   elapsedTime: elapsedTime, waveFactor: waveFactor,
+                   unlockedPlatformTypes: unlockedPlatformTypes, unlockedItemTypes: unlockedItemTypes,
+                   eventsEnabled: eventsEnabled, specialPlatformChance: specialPlatformChance,
+                   isBreathingPhase: isBreathingPhase)
+    }
 }
 
 // MARK: - Game State
@@ -57,4 +79,104 @@ struct SpawnStrategyConfig {
     let narrowWidthThreshold: CGFloat
     let sideSwitchChance: CGFloat
     let maxSameSideCount: Int
+}
+
+// MARK: - Platform Type
+
+enum PlatformType: CaseIterable {
+    case normal
+    case rest
+    case moving
+    case fragile
+    case ice
+    case bouncy
+    case teleport
+    case shrinking
+    case invisible
+}
+
+// MARK: - Item Type
+
+enum ItemType: CaseIterable {
+    // Common (spawn on platforms)
+    case slowDown
+    case shield
+    case wideScreen
+    case magnet
+    // Rare (floating in air)
+    case doubleScore
+    case ghost
+    case freeze
+    case bomb
+
+    var isRare: Bool {
+        switch self {
+        case .doubleScore, .ghost, .freeze, .bomb: return true
+        default: return false
+        }
+    }
+
+    var duration: TimeInterval {
+        switch self {
+        case .slowDown: return 5
+        case .shield: return .infinity // single use
+        case .wideScreen: return 6
+        case .magnet: return 4
+        case .doubleScore: return 8
+        case .ghost: return 3
+        case .freeze: return 4
+        case .bomb: return 0 // instant
+        }
+    }
+
+    var baseScore: Int {
+        return isRare ? 25 : 5
+    }
+}
+
+// MARK: - Game Event
+
+enum GameEvent: CaseIterable {
+    case gravityReverse
+    case fog
+    case earthquake
+    case speedStorm
+    case platformShrink
+    case chaosGravity
+
+    var duration: TimeInterval {
+        switch self {
+        case .gravityReverse: return 6
+        case .fog: return 8
+        case .earthquake: return 5
+        case .speedStorm: return 5
+        case .platformShrink: return 7
+        case .chaosGravity: return 6
+        }
+    }
+
+    var warningDuration: TimeInterval { 1.5 }
+    var cooldownDuration: TimeInterval { 3.0 }
+}
+
+// MARK: - Score Source
+
+enum ScoreSource {
+    case normalPlatform      // 10
+    case specialPlatform     // 15
+    case dangerPlatform      // 20 (fragile, invisible)
+    case commonItem          // 5
+    case rareItem            // 25
+    case surviveEvent        // 30
+
+    var basePoints: Int {
+        switch self {
+        case .normalPlatform: return 10
+        case .specialPlatform: return 15
+        case .dangerPlatform: return 20
+        case .commonItem: return 5
+        case .rareItem: return 25
+        case .surviveEvent: return 30
+        }
+    }
 }

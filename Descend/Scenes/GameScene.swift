@@ -12,8 +12,15 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var platformSystem: PlatformSystem!
     private var inputHandler: InputHandler!
     private var visualEffects: VisualEffects!
+    private var scoreSystem: ScoreSystem!
+    private var itemSystem: ItemSystem!
+    private var eventSystem: EventSystem!
+    private var backgroundSystem: BackgroundSystem!
 
     private var scoreLabel: SKLabelNode!
+    private var comboLabel: SKLabelNode!
+    private var lastUnlockedPlatformCount = 2
+    private var lastUnlockedItemCount = 0
     private var startOverlay: StartOverlay?
     private var gameOverOverlay: GameOverOverlay?
 
@@ -22,6 +29,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var topDangerLine: SKSpriteNode!
     private var bottomDangerZone: SKSpriteNode!
     private var bottomDangerLine: SKSpriteNode!
+
+    private var difficulty: TimeBasedDifficulty!
 
     private var themeSubscriptionID: UUID?
     private var lastUpdateTime: TimeInterval = 0
@@ -32,7 +41,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let theme = ThemeManager.shared.currentTheme
 
         // Physics
-        physicsWorld.gravity = CGVector(dx: 0, dy: -200)
+        physicsWorld.gravity = CGVector(dx: 0, dy: -100)
         physicsWorld.contactDelegate = self
 
         // Background
@@ -43,20 +52,84 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         visualEffects = VisualEffects(scene: self)
         visualEffects.createStarField()
 
+        // Background system (parallax hills)
+        backgroundSystem = BackgroundSystem(scene: self)
+        backgroundSystem.applyTheme(theme)
+
+        // Difficulty
+        difficulty = TimeBasedDifficulty()
+
         // Platform system
         platformSystem = PlatformSystem(scene: self)
-        platformSystem.createInitialPlatforms()
+        platformSystem.createInitialPlatforms(difficulty: difficulty.getDifficulty(platformCount: 0))
 
         // Player
         playerNode = PlayerNode()
         playerNode.position = CGPoint(x: size.width / 2, y: size.height / 2 - 100)
         addChild(playerNode)
 
+        // Wire player to platform system
+        platformSystem.playerNode = playerNode
+
         // Input
         inputHandler = InputHandler(player: playerNode, sceneWidth: size.width)
         inputHandler.isEnabled = false
 
-        // Score
+        // Item system
+        itemSystem = ItemSystem(scene: self)
+        platformSystem.itemSystem = itemSystem
+
+        // Item callbacks
+        itemSystem.onItemPickup = { [weak self] type, position in
+            guard let self else { return }
+            let sfx: AudioManager.SFX = type.isRare ? .itemRare : .itemCommon
+            AudioManager.shared.playSFX(sfx, on: self)
+            self.visualEffects.showItemPickupFlash(at: position, type: type)
+            // Award score for pickup
+            let scoreSource: ScoreSource = type.isRare ? .rareItem : .commonItem
+            self.scoreSystem.addScore(source: scoreSource, hasDoubleScore: self.itemSystem.isActive(.doubleScore))
+            if type == .bomb {
+                self.platformSystem.replaceSpecialPlatformsWithNormal()
+            }
+        }
+        itemSystem.onGhostExpired = { [weak self] in
+            guard let self else { return }
+            let diff = self.difficulty.getDifficulty(platformCount: self.platformSystem.totalPlatformsGenerated)
+            self.platformSystem.spawnSafetyPlatform(at: self.playerNode.position, difficulty: diff)
+        }
+
+        // Event system
+        eventSystem = EventSystem()
+        platformSystem.eventSystem = eventSystem
+        eventSystem.onEventWarning = { [weak self] event in
+            guard let self else { return }
+            AudioManager.shared.playSFX(.eventWarning, on: self)
+            self.visualEffects.showEventWarning(event: event)
+        }
+        eventSystem.onEventStart = { [weak self] event in
+            guard let self else { return }
+            if event == .fog {
+                self.visualEffects.addFogOverlay()
+            }
+        }
+        eventSystem.onEventEnd = { [weak self] event in
+            guard let self else { return }
+            AudioManager.shared.playSFX(.eventEnd, on: self)
+            self.scoreSystem.addScore(source: .surviveEvent,
+                                      hasDoubleScore: self.itemSystem.isActive(.doubleScore))
+            if event == .fog {
+                self.visualEffects.removeFogOverlay()
+            }
+        }
+
+        // Score system
+        scoreSystem = ScoreSystem()
+        scoreSystem.onScoreAdded = { [weak self] points, combo, multiplier in
+            guard let self else { return }
+            self.visualEffects.showScorePopup(at: self.playerNode.position, points: points, combo: combo, multiplier: multiplier)
+        }
+
+        // Score label
         setupScoreLabel(theme: theme)
 
         // Theme subscription
@@ -90,34 +163,119 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         playerNode.checkAirborne()
 
         // Difficulty
-        let difficulty = DifficultyConfig.getDifficulty(
-            score: score,
-            platformCount: platformSystem.totalPlatformsGenerated
-        )
+        difficulty.update(delta: dt)
+        let currentDifficulty = difficulty.getDifficulty(platformCount: platformSystem.totalPlatformsGenerated)
+
+        // Apply item effects to rise speed
+        var modifiedRiseSpeed = currentDifficulty.riseSpeed
+        if itemSystem.isActive(.freeze) { modifiedRiseSpeed = 0 }
+        if itemSystem.isActive(.slowDown) { modifiedRiseSpeed *= 0.6 }
+
+        // Apply event effects
+        var gravityY = currentDifficulty.gravity
+        if let event = eventSystem.activeEvent {
+            switch event {
+            case .gravityReverse:
+                gravityY = -gravityY
+            case .speedStorm:
+                modifiedRiseSpeed *= 1.5
+            case .chaosGravity:
+                let chaosX = CGFloat.random(in: -100...100)
+                physicsWorld.gravity = CGVector(dx: chaosX, dy: gravityY)
+            default:
+                break
+            }
+        }
+
+        let effectiveDifficulty = currentDifficulty.withRiseSpeed(modifiedRiseSpeed)
+
+        // Apply dynamic gravity (unless chaosGravity already set it)
+        if eventSystem.activeEvent != .chaosGravity {
+            physicsWorld.gravity = CGVector(dx: 0, dy: gravityY)
+        }
 
         // Platforms
-        platformSystem.update(delta: dt, difficulty: difficulty)
+        platformSystem.update(delta: dt, difficulty: effectiveDifficulty)
+
+        // Items
+        itemSystem.update(delta: dt, player: playerNode, difficulty: currentDifficulty)
+
+        // Events
+        eventSystem.update(delta: dt, difficulty: currentDifficulty)
+
+        // Magnet effect
+        if itemSystem.isActive(.magnet) {
+            inputHandler.magnetTarget = platformSystem.nearestPlatformX(to: playerNode.position)
+        } else {
+            inputHandler.magnetTarget = nil
+        }
 
         // Player physics
         applyPlayerPhysics(dt: dt)
 
-        // Death check (SpriteKit coords: Y=0 at bottom)
+        // Death check
         if playerNode.position.y > size.height - 35 || playerNode.position.y < 50 {
-            triggerGameOver()
-            return
+            if itemSystem.isActive(.shield) {
+                itemSystem.removeEffect(.shield)
+                scoreSystem.shieldUsed()
+                HapticsManager.shared.vibrate(.heavy)
+                if playerNode.position.y > size.height - 35 {
+                    playerNode.position.y = size.height - 60
+                    playerNode.physicsBody?.velocity.dy = -100
+                } else {
+                    playerNode.position.y = 80
+                    playerNode.physicsBody?.velocity.dy = 100
+                }
+            } else if itemSystem.isActive(.ghost) {
+                // Ghost — ignore death
+            } else {
+                triggerGameOver()
+                return
+            }
         }
 
         // Score
-        score = platformSystem.score
+        scoreSystem.update(delta: dt, elapsedTime: currentDifficulty.elapsedTime)
+        score = scoreSystem.score
         if score != lastDisplayedScore {
             scoreLabel.text = "\(score)"
             lastDisplayedScore = score
         }
+        if scoreSystem.combo >= 2 {
+            comboLabel.text = "×\(scoreSystem.combo)"
+            comboLabel.setScale(scoreSystem.combo >= 8 ? 1.3 : 1.0)
+        } else {
+            comboLabel.text = ""
+        }
+
+        // Unlock banners
+        let platformUnlockCount = currentDifficulty.unlockedPlatformTypes.count
+        if platformUnlockCount > lastUnlockedPlatformCount {
+            for type in currentDifficulty.unlockedPlatformTypes.subtracting([.normal, .rest]) {
+                visualEffects.showUnlockBanner(text: "New: \(type) platform!")
+            }
+            lastUnlockedPlatformCount = platformUnlockCount
+        }
+
+        // Shield visual
+        if itemSystem.isActive(.shield) {
+            visualEffects.addShieldGlow(to: playerNode)
+        }
+
+        // Fog
+        if eventSystem.activeEvent == .fog {
+            visualEffects.updateFogOverlay(playerPosition: playerNode.position)
+        }
+
+        // Effect indicators
+        visualEffects.updateEffectIndicators(activeEffects: itemSystem.activeEffects)
 
         // Visual updates
         visualEffects.createPlayerTrail(player: playerNode)
+        visualEffects.createComboTrail(player: playerNode, combo: scoreSystem.combo)
         visualEffects.updateTrailEffect(delta: dt)
-        visualEffects.updateStars(deltaSeconds: dt, riseSpeed: difficulty.riseSpeed)
+        visualEffects.updateStars(deltaSeconds: dt, riseSpeed: effectiveDifficulty.riseSpeed)
+        backgroundSystem.update(delta: dt, riseSpeed: effectiveDifficulty.riseSpeed)
     }
 
     // MARK: - Player Physics
@@ -145,14 +303,18 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let body = playerNode.physicsBody else { return }
 
         // Clamp velocity after physics simulation so gravity can't exceed limits
+        let currentDifficulty = difficulty.getDifficulty(platformCount: platformSystem.totalPlatformsGenerated)
         body.velocity.dx = CGFloat.clamp(body.velocity.dx, min: -300, max: 300)
-        body.velocity.dy = CGFloat.clamp(body.velocity.dy, min: -120, max: 200)
+        body.velocity.dy = CGFloat.clamp(body.velocity.dy, min: currentDifficulty.maxFallSpeed, max: 200)
     }
 
     // MARK: - Collision
 
     func didBegin(_ contact: SKPhysicsContact) {
         guard gameState == .playing else { return }
+
+        // Ghost mode — no platform collision
+        guard !itemSystem.isActive(.ghost) else { return }
 
         let (playerBody, platformBody) = sortContactBodies(contact)
         guard let pNode = playerBody?.node as? PlayerNode,
@@ -166,6 +328,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard !pNode.wasOnPlatform else { return }
 
         pNode.markOnPlatform()
+
+        // Behavior callback
+        platNode.behavior?.onPlayerLand(player: pNode, platform: platNode)
+
+        // Ice platform effect on input
+        inputHandler.onIcePlatform = platNode.isIcePlatform
+
+        // Score based on platform type
+        let source: ScoreSource
+        switch platNode.platformType {
+        case .fragile, .invisible:
+            source = .dangerPlatform
+        case .normal, .rest:
+            source = .normalPlatform
+        default:
+            source = .specialPlatform
+        }
+        scoreSystem.registerLanding()
+        scoreSystem.addScore(source: source)
 
         let contactPoint = CGPoint(
             x: pNode.position.x,
@@ -182,6 +363,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Camera shake
         let shakeIntensity = min(impactVelocity / 200, 1) * 0.008
         visualEffects.shakeCamera(scene: self, intensity: shakeIntensity * 100)
+
+        // SFX
+        let sfx: AudioManager.SFX = platNode.platformType == .normal || platNode.platformType == .rest ? .land : .landSpecial
+        AudioManager.shared.playSFX(sfx, on: self)
+        switch platNode.platformType {
+        case .bouncy: AudioManager.shared.playSFX(.bounce, on: self)
+        case .ice: AudioManager.shared.playSFX(.iceSlide, on: self)
+        case .teleport: AudioManager.shared.playSFX(.teleport, on: self)
+        default: break
+        }
 
         // Haptic
         HapticsManager.shared.vibrate(impactVelocity > 300 ? .medium : .light)
@@ -219,6 +410,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         gameState = .gameOver
         inputHandler.isEnabled = false
         HapticsManager.shared.vibrate(.error)
+        AudioManager.shared.playSFX(.death, on: self)
         AudioManager.shared.stopBGM()
 
         let theme = ThemeManager.shared.currentTheme
@@ -242,19 +434,35 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         inputHandler.reset()
         playerNode.resetFlags()
         visualEffects.resetTrail()
+        difficulty.reset()
+        scoreSystem.reset()
+        itemSystem.reset()
+        eventSystem.reset()
+        visualEffects.resetUnlocks()
+        visualEffects.clearEffectIndicators()
+        visualEffects.removeFogOverlay()
+        visualEffects.removeShieldGlow(from: playerNode)
+        backgroundSystem.reset()
 
         // Reset state
         score = 0
         lastDisplayedScore = -1
         scoreLabel.text = "0"
+        comboLabel.text = ""
         lastUpdateTime = 0
+        lastUnlockedPlatformCount = 2
+        lastUnlockedItemCount = 0
 
         // Reposition player
         playerNode.position = CGPoint(x: size.width / 2, y: size.height / 2 - 100)
         playerNode.physicsBody?.velocity = .zero
+        playerNode.alpha = 1.0
+
+        // Reset gravity to initial value
+        physicsWorld.gravity = CGVector(dx: 0, dy: -100)
 
         // Recreate platforms
-        platformSystem.createInitialPlatforms()
+        platformSystem.createInitialPlatforms(difficulty: difficulty.getDifficulty(platformCount: 0))
 
         // Show start screen
         showStartOverlay()
@@ -314,12 +522,23 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         scoreLabel.position = CGPoint(x: size.width / 2, y: size.height - 60)
         scoreLabel.zPosition = 100
         addChild(scoreLabel)
+
+        comboLabel = SKLabelNode(text: "")
+        comboLabel.fontName = "SFProDisplay-Bold"
+        comboLabel.fontSize = 24
+        comboLabel.fontColor = UIColor(red: 1, green: 0.84, blue: 0, alpha: 1)
+        comboLabel.horizontalAlignmentMode = .left
+        comboLabel.verticalAlignmentMode = .top
+        comboLabel.position = CGPoint(x: size.width / 2 + 40, y: size.height - 60)
+        comboLabel.zPosition = 100
+        addChild(comboLabel)
     }
 
     private func onThemeChange(_ theme: Theme) {
         // Background
         backgroundNode.removeFromParent()
         setupBackground(theme: theme)
+        backgroundSystem.applyTheme(theme)
 
         // Danger zones
         let danger = theme.colors.danger

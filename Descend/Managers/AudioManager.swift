@@ -1,6 +1,35 @@
 import AVFoundation
+import SpriteKit
 
 final class AudioManager {
+
+    // MARK: - Sound Effects
+
+    enum SFX: String {
+        case land = "land"
+        case landSpecial = "land_special"
+        case fragileCrack = "fragile_crack"
+        case bounce = "bounce"
+        case teleport = "teleport"
+        case iceSlide = "ice_slide"
+        case itemCommon = "item_common"
+        case itemRare = "item_rare"
+        case eventWarning = "event_warning"
+        case eventEnd = "event_end"
+        case comboUp = "combo_up"
+        case comboBreak = "combo_break"
+        case shieldBreak = "shield_break"
+        case death = "death"
+    }
+
+    func playSFX(_ sfx: SFX, on node: SKNode) {
+        let fileName = "SFX/\(sfx.rawValue).wav"
+        guard Bundle.main.url(forResource: sfx.rawValue, withExtension: "wav", subdirectory: "SFX") != nil else {
+            return
+        }
+        node.run(SKAction.playSoundFileNamed(fileName, waitForCompletion: false))
+    }
+
     static let shared = AudioManager()
 
     private var currentPlayer: AVAudioPlayer?

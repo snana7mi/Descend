@@ -278,6 +278,279 @@ final class VisualEffects {
         }
     }
 
+    // MARK: - Score Popup
+
+    func showScorePopup(at position: CGPoint, points: Int, combo: Int, multiplier: CGFloat) {
+        guard let scene else { return }
+
+        let theme = ThemeManager.shared.currentTheme
+        let text = "+\(points)"
+        let fontSize: CGFloat = combo >= 8 ? 18 : (combo >= 4 ? 16 : 14)
+
+        let label = SKLabelNode(text: text)
+        label.fontName = "SFProDisplay-Bold"
+        label.fontSize = fontSize
+        label.fontColor = multiplier >= 2.0
+            ? UIColor(red: 1, green: 0.84, blue: 0, alpha: 1)
+            : theme.colors.ui.textPrimary
+        label.position = CGPoint(x: position.x, y: position.y + 15)
+        label.zPosition = 200
+        scene.addChild(label)
+
+        let rise = SKAction.moveBy(x: 0, y: 30, duration: 0.5)
+        rise.timingMode = .easeOut
+        let fade = SKAction.fadeAlpha(to: 0, duration: 0.5)
+        label.run(SKAction.group([rise, fade])) { label.removeFromParent() }
+    }
+
+    // MARK: - Combo Flame Trail
+
+    func createComboTrail(player: PlayerNode, combo: Int) {
+        guard combo >= 4, let scene else { return }
+
+        let intensity = min(CGFloat(combo - 4) / 8.0, 1.0)
+        let size = player.size.width * (0.4 + intensity * 0.4)
+
+        let flame = SKShapeNode(rectOf: CGSize(width: size, height: size))
+        flame.fillColor = UIColor(red: 1, green: 0.4 + intensity * 0.4, blue: 0, alpha: 0.6)
+        flame.strokeColor = UIColor(red: 1, green: 0.8, blue: 0, alpha: 0.4)
+        flame.lineWidth = 1
+        flame.position = CGPoint(x: player.position.x, y: player.position.y + player.size.height / 2)
+        flame.zPosition = player.zPosition - 1
+        flame.blendMode = .add
+        scene.addChild(flame)
+
+        let rise = SKAction.moveBy(x: CGFloat.random(in: -5...5), y: 15, duration: 0.2)
+        let fade = SKAction.fadeAlpha(to: 0, duration: 0.2)
+        let scale = SKAction.scale(to: 0.3, duration: 0.2)
+        flame.run(SKAction.group([rise, fade, scale])) { flame.removeFromParent() }
+    }
+
+    // MARK: - Unlock Banner
+
+    private var shownUnlocks: Set<String> = []
+
+    func showUnlockBanner(text: String) {
+        guard let scene else { return }
+        guard !shownUnlocks.contains(text) else { return }
+        shownUnlocks.insert(text)
+
+        let theme = ThemeManager.shared.currentTheme
+
+        let label = SKLabelNode(text: text)
+        label.fontName = "SFProDisplay-Bold"
+        label.fontSize = 16
+        label.fontColor = theme.colors.ui.textAccent
+        label.position = CGPoint(x: gameWidth / 2, y: 80)
+        label.zPosition = 200
+        label.alpha = 0
+        scene.addChild(label)
+
+        let fadeIn = SKAction.fadeAlpha(to: 1, duration: 0.3)
+        let wait = SKAction.wait(forDuration: 1.5)
+        let fadeOut = SKAction.fadeAlpha(to: 0, duration: 0.3)
+        label.run(SKAction.sequence([fadeIn, wait, fadeOut])) { label.removeFromParent() }
+    }
+
+    func resetUnlocks() {
+        shownUnlocks.removeAll()
+    }
+
+    // MARK: - Shield Glow
+
+    func addShieldGlow(to player: PlayerNode) {
+        guard player.childNode(withName: "shield_glow") == nil else { return }
+
+        let glow = SKShapeNode(circleOfRadius: player.size.width * 0.7)
+        glow.name = "shield_glow"
+        glow.fillColor = .clear
+        glow.strokeColor = UIColor(red: 1, green: 0.84, blue: 0, alpha: 0.6)
+        glow.lineWidth = 2
+        glow.zPosition = -1
+        glow.glowWidth = 3
+        player.addChild(glow)
+
+        let pulse = SKAction.sequence([
+            SKAction.fadeAlpha(to: 0.3, duration: 0.8),
+            SKAction.fadeAlpha(to: 0.8, duration: 0.8)
+        ])
+        glow.run(SKAction.repeatForever(pulse))
+    }
+
+    func removeShieldGlow(from player: PlayerNode) {
+        if let glow = player.childNode(withName: "shield_glow") {
+            let burst = SKAction.group([
+                SKAction.scale(to: 3, duration: 0.3),
+                SKAction.fadeAlpha(to: 0, duration: 0.3)
+            ])
+            glow.run(burst) { glow.removeFromParent() }
+        }
+    }
+
+    // MARK: - Item Pickup Flash
+
+    func showItemPickupFlash(at position: CGPoint, type: ItemType) {
+        guard let scene else { return }
+
+        let color: UIColor = type.isRare
+            ? UIColor(red: 1, green: 0.84, blue: 0, alpha: 0.8)
+            : UIColor(white: 1, alpha: 0.6)
+
+        for _ in 0..<6 {
+            let angle = CGFloat.random(in: 0...(CGFloat.pi * 2))
+            let speed = CGFloat.random(in: 40...100)
+
+            let particle = SKShapeNode(rectOf: CGSize(width: 3, height: 3))
+            particle.fillColor = color
+            particle.strokeColor = .clear
+            particle.position = position
+            particle.zPosition = 150
+            scene.addChild(particle)
+
+            let move = SKAction.moveBy(x: cos(angle) * speed * 0.3, y: sin(angle) * speed * 0.3, duration: 0.3)
+            let fade = SKAction.fadeAlpha(to: 0, duration: 0.3)
+            particle.run(SKAction.group([move, fade])) { particle.removeFromParent() }
+        }
+    }
+
+    // MARK: - Event Visuals
+
+    func showEventWarning(event: GameEvent) {
+        guard let scene else { return }
+
+        // Warning border flash
+        let border = SKShapeNode(rectOf: CGSize(width: gameWidth - 4, height: gameHeight - 4))
+        border.fillColor = .clear
+        border.strokeColor = UIColor.red.withAlphaComponent(0.6)
+        border.lineWidth = 4
+        border.position = CGPoint(x: gameWidth / 2, y: gameHeight / 2)
+        border.zPosition = 300
+        scene.addChild(border)
+
+        let flash = SKAction.sequence([
+            SKAction.fadeAlpha(to: 0.2, duration: 0.2),
+            SKAction.fadeAlpha(to: 0.8, duration: 0.2)
+        ])
+        let flashRepeat = SKAction.repeat(flash, count: 3)
+        border.run(SKAction.sequence([flashRepeat, SKAction.removeFromParent()]))
+
+        // Event name label
+        let names: [GameEvent: String] = [
+            .gravityReverse: "GRAVITY REVERSE",
+            .fog: "FOG",
+            .earthquake: "EARTHQUAKE",
+            .speedStorm: "SPEED STORM",
+            .platformShrink: "SHRINK",
+            .chaosGravity: "CHAOS"
+        ]
+        let label = SKLabelNode(text: names[event] ?? "EVENT")
+        label.fontName = "SFProDisplay-Black"
+        label.fontSize = 22
+        label.fontColor = .white
+        label.position = CGPoint(x: gameWidth / 2, y: gameHeight / 2)
+        label.zPosition = 301
+        scene.addChild(label)
+
+        label.run(SKAction.sequence([
+            SKAction.wait(forDuration: 1.0),
+            SKAction.fadeAlpha(to: 0, duration: 0.5),
+            SKAction.removeFromParent()
+        ]))
+    }
+
+    func addFogOverlay() {
+        guard let scene else { return }
+
+        let overlay = SKSpriteNode(color: UIColor.black.withAlphaComponent(0.85),
+                                   size: CGSize(width: gameWidth, height: gameHeight))
+        overlay.position = CGPoint(x: gameWidth / 2, y: gameHeight / 2)
+        overlay.zPosition = 250
+        overlay.name = "fog_overlay"
+        scene.addChild(overlay)
+    }
+
+    func updateFogOverlay(playerPosition: CGPoint) {
+        guard let overlay = scene?.childNode(withName: "fog_overlay") as? SKSpriteNode else { return }
+
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: gameWidth, height: gameHeight))
+        let image = renderer.image { ctx in
+            UIColor.black.withAlphaComponent(0.85).setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: gameWidth, height: gameHeight))
+
+            let uikitY = gameHeight - playerPosition.y
+            let holeRect = CGRect(x: playerPosition.x - 80, y: uikitY - 80, width: 160, height: 160)
+            ctx.cgContext.setBlendMode(.clear)
+            ctx.cgContext.fillEllipse(in: holeRect)
+        }
+        overlay.texture = SKTexture(image: image)
+    }
+
+    func removeFogOverlay() {
+        scene?.childNode(withName: "fog_overlay")?.removeFromParent()
+    }
+
+    // MARK: - Effect Indicators
+
+    private var effectIndicators: [ItemType: SKNode] = [:]
+
+    func updateEffectIndicators(activeEffects: [ItemType: TimeInterval]) {
+        guard let scene else { return }
+
+        // Remove expired
+        for (type, node) in effectIndicators {
+            if activeEffects[type] == nil {
+                node.removeFromParent()
+                effectIndicators.removeValue(forKey: type)
+            }
+        }
+
+        // Add/update
+        var index: CGFloat = 0
+        for (type, remaining) in activeEffects.sorted(by: { $0.key.duration > $1.key.duration }) {
+            let x = 30 + index * 35
+            let y = gameHeight - 100
+
+            if let existing = effectIndicators[type] {
+                existing.position = CGPoint(x: x, y: y)
+                if let bar = existing.childNode(withName: "progress") as? SKSpriteNode {
+                    let progress = type == .shield ? 1.0 : CGFloat(remaining / type.duration)
+                    bar.xScale = max(0, progress)
+                }
+            } else {
+                let container = SKNode()
+                container.position = CGPoint(x: x, y: y)
+                container.zPosition = 200
+
+                let icon = SKSpriteNode(texture: ItemNode.generateTexture(for: type, size: 16),
+                                         size: CGSize(width: 16, height: 16))
+                container.addChild(icon)
+
+                let bgBar = SKSpriteNode(color: UIColor(white: 0.3, alpha: 0.5),
+                                          size: CGSize(width: 24, height: 3))
+                bgBar.anchorPoint = CGPoint(x: 0, y: 0.5)
+                bgBar.position = CGPoint(x: -12, y: -12)
+                container.addChild(bgBar)
+
+                let fillBar = SKSpriteNode(color: .white, size: CGSize(width: 24, height: 3))
+                fillBar.name = "progress"
+                fillBar.anchorPoint = CGPoint(x: 0, y: 0.5)
+                fillBar.position = CGPoint(x: -12, y: -12)
+                container.addChild(fillBar)
+
+                scene.addChild(container)
+                effectIndicators[type] = container
+            }
+            index += 1
+        }
+    }
+
+    func clearEffectIndicators() {
+        for (_, node) in effectIndicators {
+            node.removeFromParent()
+        }
+        effectIndicators.removeAll()
+    }
+
     // MARK: - Background Gradient
 
     static func makeGradientSprite(top: UIColor, bottom: UIColor, size: CGSize) -> SKSpriteNode {
