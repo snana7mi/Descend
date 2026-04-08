@@ -98,7 +98,7 @@ final class TimeBasedDifficulty {
             waveFactor: wave,
             unlockedPlatformTypes: unlockedPlatformTypes(),
             unlockedItemTypes: unlockedItemTypes(),
-            eventsEnabled: elapsedTime >= 150,
+            eventsEnabled: elapsedTime >= 90,
             specialPlatformChance: specialChance,
             isBreathingPhase: isBreathingPhase()
         )
@@ -123,23 +123,23 @@ final class TimeBasedDifficulty {
 
     private func unlockedPlatformTypes() -> Set<PlatformType> {
         var types: Set<PlatformType> = [.normal, .rest]
-        if elapsedTime >= 30  { types.insert(.moving) }
-        if elapsedTime >= 60  { types.insert(.fragile) }
-        if elapsedTime >= 90  { types.insert(.ice) }
-        if elapsedTime >= 90  { types.insert(.bouncy) }
-        if elapsedTime >= 120 { types.insert(.teleport) }
-        if elapsedTime >= 150 { types.insert(.shrinking) }
-        if elapsedTime >= 180 { types.insert(.invisible) }
+        if elapsedTime >= 15  { types.insert(.moving) }
+        if elapsedTime >= 30  { types.insert(.fragile) }
+        if elapsedTime >= 45  { types.insert(.ice) }
+        if elapsedTime >= 45  { types.insert(.bouncy) }
+        if elapsedTime >= 75  { types.insert(.teleport) }
+        if elapsedTime >= 100 { types.insert(.shrinking) }
+        if elapsedTime >= 130 { types.insert(.invisible) }
         return types
     }
 
     private func unlockedItemTypes() -> Set<ItemType> {
         var types: Set<ItemType> = []
-        if elapsedTime >= 60  { types.formUnion([.slowDown, .shield]) }
-        if elapsedTime >= 90  { types.insert(.wideScreen) }
-        if elapsedTime >= 120 { types.formUnion([.magnet, .doubleScore]) }
-        if elapsedTime >= 150 { types.formUnion([.ghost, .freeze]) }
-        if elapsedTime >= 180 { types.insert(.bomb) }
+        if elapsedTime >= 15  { types.formUnion([.slowDown, .shield]) }
+        if elapsedTime >= 45  { types.insert(.wideScreen) }
+        if elapsedTime >= 60  { types.formUnion([.magnet, .doubleScore]) }
+        if elapsedTime >= 90  { types.formUnion([.ghost, .freeze]) }
+        if elapsedTime >= 120 { types.insert(.bomb) }
         return types
     }
 }
