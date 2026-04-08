@@ -15,6 +15,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var scoreSystem: ScoreSystem!
     private var itemSystem: ItemSystem!
     private var eventSystem: EventSystem!
+    private var backgroundSystem: BackgroundSystem!
 
     private var scoreLabel: SKLabelNode!
     private var comboLabel: SKLabelNode!
@@ -50,6 +51,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Visual effects
         visualEffects = VisualEffects(scene: self)
         visualEffects.createStarField()
+
+        // Background system (parallax hills)
+        backgroundSystem = BackgroundSystem(scene: self)
+        backgroundSystem.applyTheme(theme)
 
         // Difficulty
         difficulty = TimeBasedDifficulty()
@@ -270,6 +275,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         visualEffects.createComboTrail(player: playerNode, combo: scoreSystem.combo)
         visualEffects.updateTrailEffect(delta: dt)
         visualEffects.updateStars(deltaSeconds: dt, riseSpeed: effectiveDifficulty.riseSpeed)
+        backgroundSystem.update(delta: dt, riseSpeed: effectiveDifficulty.riseSpeed)
     }
 
     // MARK: - Player Physics
@@ -436,6 +442,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         visualEffects.clearEffectIndicators()
         visualEffects.removeFogOverlay()
         visualEffects.removeShieldGlow(from: playerNode)
+        backgroundSystem.reset()
 
         // Reset state
         score = 0
@@ -531,6 +538,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Background
         backgroundNode.removeFromParent()
         setupBackground(theme: theme)
+        backgroundSystem.applyTheme(theme)
 
         // Danger zones
         let danger = theme.colors.danger

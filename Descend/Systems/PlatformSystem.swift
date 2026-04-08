@@ -37,25 +37,34 @@ final class PlatformSystem {
         regenerateTextures()
     }
 
-    // MARK: - Texture Generation
+    // MARK: - Tile Textures (Kenney Abstract Platformer)
+
+    // Tile asset names mapped to platform types
+    private static let tileNames: [PlatformType: String] = [
+        .normal: "tile_blue",
+        .rest: "tile_green",
+        .moving: "tile_yellow",
+        .fragile: "tile_brown",
+        .ice: "tile_blue",
+        .bouncy: "tile_green",
+        .teleport: "tile_yellow",
+        .shrinking: "tile_brown",
+        .invisible: "tile_blue"
+    ]
 
     func regenerateTextures() {
         platformTextures.removeAll()
         let theme = ThemeManager.shared.currentTheme
         let schemes = theme.colors.platformSchemes
-        let isDark = theme.mode == .dark
-        let baseWidth = ceil(TimeBasedDifficulty.basePlatformWidthMax)
-        let h = platformHeight
 
-        for scheme in schemes.prefix(5) {
-            let texture = generatePlatformTexture(
-                width: baseWidth, height: h,
-                scheme: scheme, isDark: isDark
-            )
-            platformTextures.append((texture, scheme))
+        // Load Kenney tile textures and pair with color schemes
+        let tileOrder: [String] = ["tile_blue", "tile_green", "tile_brown", "tile_yellow", "tile_blue"]
+        for (i, tileName) in tileOrder.prefix(schemes.count).enumerated() {
+            let texture = SKTexture(imageNamed: tileName)
+            platformTextures.append((texture, schemes[i]))
         }
 
-        // Update active platforms with new textures
+        // Update active platforms
         for platform in activePlatforms {
             let idx = Int.random(in: 0..<platformTextures.count)
             let info = platformTextures[idx]
@@ -64,62 +73,9 @@ final class PlatformSystem {
         }
     }
 
-    private func generatePlatformTexture(width: CGFloat, height: CGFloat, scheme: PlatformColorScheme, isDark: Bool) -> SKTexture {
-        let padding: CGFloat = 8
-        let totalWidth = width + padding
-        let totalHeight = height + padding
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: totalWidth, height: totalHeight))
-
-        let image = renderer.image { ctx in
-            let rect = CGRect(x: padding / 2, y: padding / 2, width: width, height: height)
-            let radius = height / 2
-            let path = UIBezierPath(roundedRect: rect, cornerRadius: radius)
-
-            if isDark {
-                // Outer glow
-                scheme.primary.withAlphaComponent(0.15).setFill()
-                UIBezierPath(roundedRect: rect.insetBy(dx: -4, dy: -4), cornerRadius: radius + 2).fill()
-
-                // Middle glow
-                scheme.primary.withAlphaComponent(0.3).setFill()
-                UIBezierPath(roundedRect: rect.insetBy(dx: -2, dy: -2), cornerRadius: radius + 1).fill()
-
-                // Core fill
-                UIColor.black.withAlphaComponent(0.4).setFill()
-                path.fill()
-
-                // Neon border
-                scheme.primary.setStroke()
-                path.lineWidth = 3
-                path.stroke()
-
-                // Inner highlight
-                let innerPath = UIBezierPath(roundedRect: rect.insetBy(dx: 2, dy: 2), cornerRadius: radius - 1)
-                UIColor.white.withAlphaComponent(0.6).setStroke()
-                innerPath.lineWidth = 1
-                innerPath.stroke()
-            } else {
-                // Soft shadow
-                scheme.secondary.withAlphaComponent(0.2).setFill()
-                UIBezierPath(roundedRect: rect.insetBy(dx: -3, dy: -3), cornerRadius: radius + 2).fill()
-
-                // Main fill
-                scheme.primary.withAlphaComponent(0.9).setFill()
-                path.fill()
-
-                // Top highlight
-                let highlightRect = CGRect(x: rect.minX + 2, y: rect.minY + 2, width: rect.width - 4, height: rect.height / 2 - 2)
-                UIColor.white.withAlphaComponent(0.4).setFill()
-                UIBezierPath(roundedRect: highlightRect, cornerRadius: radius - 1).fill()
-
-                // Soft border
-                scheme.secondary.withAlphaComponent(0.8).setStroke()
-                path.lineWidth = 2
-                path.stroke()
-            }
-        }
-
-        return SKTexture(image: image)
+    private func textureForType(_ type: PlatformType) -> SKTexture {
+        let name = PlatformSystem.tileNames[type] ?? "tile_blue"
+        return SKTexture(imageNamed: name)
     }
 
     // MARK: - Platform Creation
@@ -260,14 +216,24 @@ final class PlatformSystem {
 
         let safeX = validatePlatformX(x: x, width: width)
 
-        let idx = Int.random(in: 0..<platformTextures.count)
-        let textureInfo = platformTextures[idx]
+        // Pick texture based on platform type, fall back to random for normal
+        let texture: SKTexture
+        let scheme: PlatformColorScheme
+        if type == .normal || type == .rest {
+            let idx = Int.random(in: 0..<platformTextures.count)
+            texture = platformTextures[idx].texture
+            scheme = platformTextures[idx].scheme
+        } else {
+            texture = textureForType(type)
+            let idx = Int.random(in: 0..<platformTextures.count)
+            scheme = platformTextures[idx].scheme
+        }
 
         let platform: PlatformNode
         if let pooled = platformPool.popLast() {
             platform = pooled
         } else {
-            platform = PlatformNode(texture: textureInfo.texture, colorScheme: textureInfo.scheme)
+            platform = PlatformNode(texture: texture, colorScheme: scheme)
         }
 
         let behavior = makeBehavior(for: type)
@@ -276,8 +242,8 @@ final class PlatformSystem {
             at: CGPoint(x: safeX, y: y),
             width: width,
             height: platformHeight,
-            texture: textureInfo.texture,
-            scheme: textureInfo.scheme,
+            texture: texture,
+            scheme: scheme,
             type: type,
             behavior: behavior
         )
