@@ -13,6 +13,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var inputHandler: InputHandler!
     private var visualEffects: VisualEffects!
     private var scoreSystem: ScoreSystem!
+    private var itemSystem: ItemSystem!
 
     private var scoreLabel: SKLabelNode!
     private var startOverlay: StartOverlay?
@@ -65,6 +66,23 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         inputHandler = InputHandler(player: playerNode, sceneWidth: size.width)
         inputHandler.isEnabled = false
 
+        // Item system
+        itemSystem = ItemSystem(scene: self)
+        platformSystem.itemSystem = itemSystem
+
+        // Item callbacks
+        itemSystem.onItemPickup = { [weak self] type, _ in
+            guard let self else { return }
+            if type == .bomb {
+                self.platformSystem.replaceSpecialPlatformsWithNormal()
+            }
+        }
+        itemSystem.onGhostExpired = { [weak self] in
+            guard let self else { return }
+            let diff = self.difficulty.getDifficulty(platformCount: self.platformSystem.totalPlatformsGenerated)
+            self.platformSystem.spawnSafetyPlatform(at: self.playerNode.position, difficulty: diff)
+        }
+
         // Score system
         scoreSystem = ScoreSystem()
 
@@ -105,19 +123,50 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         difficulty.update(delta: dt)
         let currentDifficulty = difficulty.getDifficulty(platformCount: platformSystem.totalPlatformsGenerated)
 
+        // Apply item effects to rise speed
+        var modifiedRiseSpeed = currentDifficulty.riseSpeed
+        if itemSystem.isActive(.freeze) { modifiedRiseSpeed = 0 }
+        if itemSystem.isActive(.slowDown) { modifiedRiseSpeed *= 0.6 }
+        let effectiveDifficulty = currentDifficulty.withRiseSpeed(modifiedRiseSpeed)
+
         // Apply dynamic gravity
         physicsWorld.gravity = CGVector(dx: 0, dy: currentDifficulty.gravity)
 
         // Platforms
-        platformSystem.update(delta: dt, difficulty: currentDifficulty)
+        platformSystem.update(delta: dt, difficulty: effectiveDifficulty)
+
+        // Items
+        itemSystem.update(delta: dt, player: playerNode, difficulty: currentDifficulty)
+
+        // Magnet effect
+        if itemSystem.isActive(.magnet) {
+            inputHandler.magnetTarget = platformSystem.nearestPlatformX(to: playerNode.position)
+        } else {
+            inputHandler.magnetTarget = nil
+        }
 
         // Player physics
         applyPlayerPhysics(dt: dt)
 
-        // Death check (SpriteKit coords: Y=0 at bottom)
+        // Death check
         if playerNode.position.y > size.height - 35 || playerNode.position.y < 50 {
-            triggerGameOver()
-            return
+            if itemSystem.isActive(.shield) {
+                itemSystem.activeEffects.removeValue(forKey: .shield)
+                scoreSystem.shieldUsed()
+                HapticsManager.shared.vibrate(.heavy)
+                if playerNode.position.y > size.height - 35 {
+                    playerNode.position.y = size.height - 60
+                    playerNode.physicsBody?.velocity.dy = -100
+                } else {
+                    playerNode.position.y = 80
+                    playerNode.physicsBody?.velocity.dy = 100
+                }
+            } else if itemSystem.isActive(.ghost) {
+                // Ghost — ignore death
+            } else {
+                triggerGameOver()
+                return
+            }
         }
 
         // Score
@@ -168,6 +217,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     func didBegin(_ contact: SKPhysicsContact) {
         guard gameState == .playing else { return }
+
+        // Ghost mode — no platform collision
+        guard !itemSystem.isActive(.ghost) else { return }
 
         let (playerBody, platformBody) = sortContactBodies(contact)
         guard let pNode = playerBody?.node as? PlayerNode,
@@ -278,6 +330,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         visualEffects.resetTrail()
         difficulty.reset()
         scoreSystem.reset()
+        itemSystem.reset()
 
         // Reset state
         score = 0
