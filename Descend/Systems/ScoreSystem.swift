@@ -9,15 +9,27 @@ final class ScoreSystem {
     private let comboTimeout: TimeInterval = 1.5
     private var isTracking = false
 
+    // Survival scoring: 1 point per second, scaling with elapsed time
+    private var survivalAccumulator: TimeInterval = 0
+    private let survivalInterval: TimeInterval = 1.0 // award points every 1 second
+
     // Callback for visual feedback: (points, combo, multiplier)
     var onScoreAdded: ((_ points: Int, _ combo: Int, _ multiplier: CGFloat) -> Void)?
 
-    func update(delta: TimeInterval) {
+    func update(delta: TimeInterval, elapsedTime: TimeInterval) {
         if isTracking {
             timeSinceLastLand += delta
             if timeSinceLastLand > comboTimeout {
                 breakCombo()
             }
+        }
+
+        // Survival scoring: scales with time (1 pt/s at start, up to 5 pt/s at 300s)
+        survivalAccumulator += delta
+        if survivalAccumulator >= survivalInterval {
+            survivalAccumulator -= survivalInterval
+            let timeScale = 1 + Int(min(elapsedTime / 75, 4)) // 1→5 over 300s
+            score += timeScale
         }
     }
 
@@ -55,6 +67,7 @@ final class ScoreSystem {
         multiplier = 1.0
         timeSinceLastLand = 0
         isTracking = false
+        survivalAccumulator = 0
     }
 
     // MARK: - Private

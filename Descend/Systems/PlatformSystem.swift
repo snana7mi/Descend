@@ -282,6 +282,9 @@ final class PlatformSystem {
             behavior: behavior
         )
 
+        // Apply visual decoration for special platforms
+        applyPlatformDecoration(platform, type: type)
+
         // Link teleport pairs — only link when this is the SECOND pad (not the pending one itself)
         if type == .teleport, let teleportBehavior = behavior as? TeleportBehavior {
             if let pending = teleportPending, pending !== teleportBehavior {
@@ -403,6 +406,108 @@ final class PlatformSystem {
                 SKAction.fadeAlpha(to: 1.0, duration: 0.1)
             ])
             platform.run(SKAction.repeat(flash, count: 2))
+        }
+    }
+
+    // MARK: - Platform Decoration
+
+    private func applyPlatformDecoration(_ platform: PlatformNode, type: PlatformType) {
+        // Remove old decorations
+        platform.childNode(withName: "decoration")?.removeFromParent()
+
+        guard type != .normal && type != .rest else { return }
+
+        let w = platform.size.width
+        let h = platform.size.height
+        let isDark = ThemeManager.shared.currentTheme.mode == .dark
+
+        switch type {
+        case .moving:
+            // Left/right arrows at edges
+            let arrows = SKLabelNode(text: "◀ ▶")
+            arrows.name = "decoration"
+            arrows.fontSize = 8
+            arrows.fontColor = isDark ? .white : UIColor(white: 0.3, alpha: 0.8)
+            arrows.verticalAlignmentMode = .center
+            arrows.position = CGPoint(x: 0, y: 0)
+            platform.addChild(arrows)
+
+        case .fragile:
+            // Crack lines
+            let crack = SKShapeNode()
+            crack.name = "decoration"
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: -w * 0.2, y: h * 0.15))
+            path.addLine(to: CGPoint(x: 0, y: -h * 0.1))
+            path.addLine(to: CGPoint(x: w * 0.15, y: h * 0.1))
+            crack.path = path
+            crack.strokeColor = isDark ? UIColor(white: 1, alpha: 0.5) : UIColor(white: 0, alpha: 0.3)
+            crack.lineWidth = 1.5
+            platform.addChild(crack)
+
+        case .ice:
+            // Light blue tint overlay
+            let tint = SKSpriteNode(color: UIColor(red: 0.7, green: 0.9, blue: 1, alpha: 0.3),
+                                     size: CGSize(width: w, height: h))
+            tint.name = "decoration"
+            platform.addChild(tint)
+            // Sparkle dots
+            for _ in 0..<3 {
+                let dot = SKShapeNode(circleOfRadius: 1.5)
+                dot.fillColor = .white
+                dot.strokeColor = .clear
+                dot.alpha = 0.7
+                dot.position = CGPoint(x: CGFloat.random(in: -w/3...w/3), y: 0)
+                dot.name = "decoration"
+                platform.addChild(dot)
+            }
+
+        case .bouncy:
+            // Spring zigzag
+            let spring = SKLabelNode(text: "⌇")
+            spring.name = "decoration"
+            spring.fontSize = 12
+            spring.fontColor = UIColor(red: 0.2, green: 0.9, blue: 0.3, alpha: 0.9)
+            spring.verticalAlignmentMode = .center
+            spring.position = CGPoint(x: 0, y: 0)
+            platform.addChild(spring)
+
+        case .teleport:
+            // Purple glow + swirl
+            let glow = SKShapeNode(circleOfRadius: 6)
+            glow.name = "decoration"
+            glow.fillColor = UIColor(red: 0.6, green: 0.2, blue: 0.9, alpha: 0.4)
+            glow.strokeColor = UIColor(red: 0.7, green: 0.3, blue: 1, alpha: 0.8)
+            glow.lineWidth = 1.5
+            glow.glowWidth = 3
+            platform.addChild(glow)
+            let rotate = SKAction.rotate(byAngle: .pi * 2, duration: 2)
+            glow.run(SKAction.repeatForever(rotate))
+
+        case .shrinking:
+            // Inward arrows
+            let label = SKLabelNode(text: "▸◂")
+            label.name = "decoration"
+            label.fontSize = 8
+            label.fontColor = UIColor(red: 1, green: 0.6, blue: 0, alpha: 0.8)
+            label.verticalAlignmentMode = .center
+            label.position = CGPoint(x: 0, y: 0)
+            platform.addChild(label)
+
+        case .invisible:
+            // Dashed outline (platform itself starts at low alpha via behavior)
+            let dash = SKShapeNode(rectOf: CGSize(width: w * 0.8, height: h * 0.6))
+            dash.name = "decoration"
+            dash.fillColor = .clear
+            dash.strokeColor = isDark ? UIColor(white: 1, alpha: 0.3) : UIColor(white: 0, alpha: 0.2)
+            dash.lineWidth = 1
+            // SpriteKit doesn't support dashed lines natively on SKShapeNode,
+            // so use a subtle dotted effect by lowering alpha
+            dash.alpha = 0.5
+            platform.addChild(dash)
+
+        case .normal, .rest:
+            break
         }
     }
 

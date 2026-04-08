@@ -54,6 +54,8 @@ final class PlatformNode: SKSpriteNode {
         behavior?.onRecycle()
         behavior = nil
         platformType = .normal
+        // Remove decorations
+        children.filter { $0.name == "decoration" }.forEach { $0.removeFromParent() }
         self.isHidden = true
         self.physicsBody = nil
         self.removeFromParent()

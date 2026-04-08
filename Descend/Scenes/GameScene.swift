@@ -230,7 +230,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
 
         // Score
-        scoreSystem.update(delta: dt)
+        scoreSystem.update(delta: dt, elapsedTime: currentDifficulty.elapsedTime)
         score = scoreSystem.score
         if score != lastDisplayedScore {
             scoreLabel.text = "\(score)"
