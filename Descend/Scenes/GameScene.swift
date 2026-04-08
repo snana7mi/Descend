@@ -58,6 +58,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         playerNode.position = CGPoint(x: size.width / 2, y: size.height / 2 - 100)
         addChild(playerNode)
 
+        // Wire player to platform system
+        platformSystem.playerNode = playerNode
+
         // Input
         inputHandler = InputHandler(player: playerNode, sceneWidth: size.width)
         inputHandler.isEnabled = false
@@ -179,9 +182,24 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
         pNode.markOnPlatform()
 
-        // Score
+        // Behavior callback
+        platNode.behavior?.onPlayerLand(player: pNode, platform: platNode)
+
+        // Ice platform effect on input
+        inputHandler.onIcePlatform = platNode.isIcePlatform
+
+        // Score based on platform type
+        let source: ScoreSource
+        switch platNode.platformType {
+        case .fragile, .invisible:
+            source = .dangerPlatform
+        case .normal, .rest:
+            source = .normalPlatform
+        default:
+            source = .specialPlatform
+        }
         scoreSystem.registerLanding()
-        scoreSystem.addScore(source: .normalPlatform)
+        scoreSystem.addScore(source: source)
 
         let contactPoint = CGPoint(
             x: pNode.position.x,

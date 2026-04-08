@@ -17,6 +17,17 @@ final class PlatformSystem {
 
     private let spawnStrategy: PlatformSpawnStrategy
 
+    // External references for behavior/item integration
+    weak var playerNode: PlayerNode?
+    weak var itemSystem: ItemSystem?
+    weak var eventSystem: EventSystem?
+
+    // Behavior state
+    private var lastPlatformType: PlatformType = .normal
+    private var teleportPending: TeleportBehavior? = nil
+    private var teleportCountdown: Int = 0
+    private var platformShrinkApplied = false
+
     init(scene: SKScene) {
         self.scene = scene
         self.gameWidth = scene.size.width
@@ -148,10 +159,19 @@ final class PlatformSystem {
     func update(delta: TimeInterval, difficulty: Difficulty) {
         let riseAmount = difficulty.riseSpeed * CGFloat(delta)
 
-        // Move platforms upward, count and recycle
+        // Move platforms upward, update behaviors, count and recycle
         for i in stride(from: activePlatforms.count - 1, through: 0, by: -1) {
             let platform = activePlatforms[i]
             platform.position.y += riseAmount
+
+            // Update behavior
+            platform.behavior?.update(delta: delta, platform: platform)
+
+            // Earthquake shake
+            if eventSystem?.activeEvent == .earthquake {
+                platform.position.x += CGFloat.random(in: -15...15) * CGFloat(delta) * 10
+                platform.position.x = CGFloat.clamp(platform.position.x, min: 0, max: gameWidth)
+            }
 
             if platform.position.y > gameHeight + 50 {
                 if !platform.isCounted {
@@ -160,6 +180,20 @@ final class PlatformSystem {
                 }
                 recyclePlatform(at: i)
             }
+        }
+
+        // Platform shrink event
+        if eventSystem?.activeEvent == .platformShrink {
+            if !platformShrinkApplied {
+                platformShrinkApplied = true
+                for platform in activePlatforms {
+                    let newWidth = platform.size.width * 0.75
+                    platform.run(SKAction.resize(toWidth: newWidth, duration: 0.3))
+                    platform.configurePhysics(width: newWidth, height: platformHeight)
+                }
+            }
+        } else {
+            platformShrinkApplied = false
         }
 
         // Spawn new platforms based on timer
@@ -182,6 +216,10 @@ final class PlatformSystem {
         passedPlatforms = 0
         totalPlatformsGenerated = 0
         spawnStrategy.reset()
+        lastPlatformType = .normal
+        teleportPending = nil
+        teleportCountdown = 0
+        platformShrinkApplied = false
     }
 
     // MARK: - Private
@@ -191,14 +229,22 @@ final class PlatformSystem {
         let spawn = spawnStrategy.getNextPlatform(difficulty: difficulty)
         let bufferTime: CGFloat = 2.5
         let newY = -(difficulty.riseSpeed * bufferTime)
-        createPlatform(x: spawn.x, y: newY, difficulty: difficulty, widthOverride: spawn.width)
+        let type = choosePlatformType(difficulty: difficulty)
+        createPlatform(x: spawn.x, y: newY, difficulty: difficulty, widthOverride: spawn.width, type: type)
     }
 
-    private func createPlatform(x: CGFloat, y: CGFloat, difficulty: Difficulty, widthOverride: CGFloat? = nil) {
+    private func createPlatform(x: CGFloat, y: CGFloat, difficulty: Difficulty,
+                                widthOverride: CGFloat? = nil, type: PlatformType = .normal) {
         guard let scene else { return }
 
         let maxAllowedWidth = max(1, gameWidth - spawnHorizontalPadding * 2)
-        let width = min(widthOverride ?? CGFloat.random(in: difficulty.platformWidthMin...difficulty.platformWidthMax), maxAllowedWidth)
+        var width = min(widthOverride ?? CGFloat.random(in: difficulty.platformWidthMin...difficulty.platformWidthMax), maxAllowedWidth)
+
+        // WideScreen item effect
+        if itemSystem?.isActive(.wideScreen) == true {
+            width = min(width * 1.5, maxAllowedWidth)
+        }
+
         let safeX = validatePlatformX(x: x, width: width)
 
         let idx = Int.random(in: 0..<platformTextures.count)
@@ -211,15 +257,33 @@ final class PlatformSystem {
             platform = PlatformNode(texture: textureInfo.texture, colorScheme: textureInfo.scheme)
         }
 
+        let behavior = makeBehavior(for: type)
+
         platform.activate(
             at: CGPoint(x: safeX, y: y),
             width: width,
             height: platformHeight,
             texture: textureInfo.texture,
-            scheme: textureInfo.scheme
+            scheme: textureInfo.scheme,
+            type: type,
+            behavior: behavior
         )
+
+        // Link teleport pairs
+        if type == .teleport, let teleportBehavior = behavior as? TeleportBehavior {
+            if let pending = teleportPending {
+                pending.pairedPlatform = platform
+                teleportBehavior.pairedPlatform = findPlatformWithBehavior(pending)
+                teleportPending = nil
+            }
+        }
+
         scene.addChild(platform)
         activePlatforms.append(platform)
+        lastPlatformType = type
+
+        // Notify item system
+        itemSystem?.onPlatformSpawned(position: platform.position, width: width, difficulty: difficulty)
     }
 
     private func recyclePlatform(at index: Int) {
@@ -228,6 +292,104 @@ final class PlatformSystem {
 
         if platformPool.count < poolMaxSize {
             platformPool.append(platform)
+        }
+    }
+
+    // MARK: - Behavior Assignment
+
+    private func choosePlatformType(difficulty: Difficulty) -> PlatformType {
+        guard !difficulty.isRestPlatform else { return .normal }
+
+        // Check if we owe a teleport pair
+        if teleportCountdown > 0 {
+            teleportCountdown -= 1
+            if teleportCountdown == 0 {
+                return .teleport
+            }
+        }
+
+        guard CGFloat.random(in: 0...1) < difficulty.specialPlatformChance else {
+            return .normal
+        }
+
+        var candidates = difficulty.unlockedPlatformTypes.subtracting([.normal, .rest])
+        candidates.remove(lastPlatformType)
+
+        if teleportPending != nil {
+            candidates.remove(.teleport)
+        }
+
+        guard let chosen = candidates.randomElement() else { return .normal }
+        return chosen
+    }
+
+    private func makeBehavior(for type: PlatformType) -> PlatformBehavior? {
+        switch type {
+        case .normal, .rest:
+            return nil
+        case .moving:
+            return MovingBehavior(gameWidth: gameWidth, padding: spawnHorizontalPadding)
+        case .fragile:
+            return FragileBehavior()
+        case .ice:
+            return IceBehavior()
+        case .bouncy:
+            return BouncyBehavior()
+        case .teleport:
+            let behavior = TeleportBehavior()
+            if teleportPending == nil {
+                teleportPending = behavior
+                teleportCountdown = Int.random(in: 2...4)
+            }
+            return behavior
+        case .shrinking:
+            return ShrinkingBehavior()
+        case .invisible:
+            let behavior = InvisibleBehavior()
+            if let player = playerNode {
+                behavior.setPlayer(player)
+            }
+            return behavior
+        }
+    }
+
+    private func findPlatformWithBehavior(_ behavior: PlatformBehavior) -> PlatformNode? {
+        return activePlatforms.first { $0.behavior === behavior }
+    }
+
+    // MARK: - Public Helpers
+
+    func nearestPlatformX(to position: CGPoint) -> CGFloat? {
+        var closest: CGFloat? = nil
+        var minDist: CGFloat = .greatestFiniteMagnitude
+        for platform in activePlatforms {
+            let dy = abs(platform.position.y - position.y)
+            if dy < minDist && platform.physicsBody != nil {
+                minDist = dy
+                closest = platform.position.x
+            }
+        }
+        return closest
+    }
+
+    func spawnSafetyPlatform(at position: CGPoint, difficulty: Difficulty) {
+        let safeY = position.y - 30
+        createPlatform(x: position.x, y: safeY, difficulty: difficulty, widthOverride: 100, type: .normal)
+    }
+
+    func replaceSpecialPlatformsWithNormal() {
+        for platform in activePlatforms where platform.platformType != .normal && platform.platformType != .rest {
+            platform.behavior?.onRecycle()
+            platform.behavior = nil
+            platform.platformType = .normal
+            platform.alpha = 1.0
+            platform.removeAllActions()
+            platform.configurePhysics(width: platform.size.width, height: platformHeight)
+            let flash = SKAction.sequence([
+                SKAction.fadeAlpha(to: 0.3, duration: 0.1),
+                SKAction.fadeAlpha(to: 1.0, duration: 0.1)
+            ])
+            platform.run(SKAction.repeat(flash, count: 2))
         }
     }
 
